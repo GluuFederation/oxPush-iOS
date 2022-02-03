@@ -77,10 +77,8 @@
 		
 		BOOL isEnroll = [method isEqualToString:ENROLL_METHOD];
 		
-		if (oneStep || isEnroll) {
-			NSString* u2fEndpoint = [u2fMetaData registrationEndpoint];
-			
-			[self callServiceChallenge:u2fEndpoint isEnroll:isEnroll andParameters:requestParams isDecline:isDecline isSecureClick:isSecureClick userName: username callback:^(NSDictionary *result,NSError *error){
+        if (self->oneStep || isEnroll) {
+			[self callServiceChallenge:u2fMetaData isEnroll:isEnroll andParameters:requestParams isDecline:isDecline isSecureClick:isSecureClick userName: username callback:^(NSDictionary *result,NSError *error){
 				if (error) {
 					handler(nil , error);
 				} else {
@@ -109,7 +107,7 @@
 					handler(nil , error);
 				} else {
 					// Success
-					[self callServiceChallenge:u2fEndpoint isEnroll:isEnroll andParameters:requestParams isDecline:isDecline isSecureClick: isSecureClick userName: username callback:^(NSDictionary *result,NSError *error){
+					[self callServiceChallenge:u2fMetaData isEnroll:isEnroll andParameters:requestParams isDecline:isDecline isSecureClick: isSecureClick userName: username callback:^(NSDictionary *result,NSError *error){
 						if (error) {
 							handler(nil, error);
 						} else {
@@ -128,26 +126,29 @@
 }
 
 
--(void)callServiceChallenge:(NSString*)baseUrl isEnroll:(BOOL)isEnroll andParameters:(NSDictionary*)parameters isDecline:(BOOL)isDecline isSecureClick:(BOOL)isSecureClick userName:(NSString*)userName callback:(RequestCompletionHandler)handler{
+-(void)callServiceChallenge:(U2fMetaData*)u2fMetaData isEnroll:(BOOL)isEnroll andParameters:(NSDictionary*)parameters isDecline:(BOOL)isDecline isSecureClick:(BOOL)isSecureClick userName:(NSString*)userName callback:(RequestCompletionHandler)handler{
+    NSString* baseUrl = isEnroll ? [u2fMetaData registrationEndpoint] : [u2fMetaData authenticationEndpoint];
     [[ApiServiceManager sharedInstance] doGETUrl:baseUrl :parameters callback:^(NSDictionary *result,NSError *error){
         if (error) {
             handler(nil, error);
         } else {
             // Success getting authenticate MetaData
-            [self onChallengeReceived:baseUrl isEnroll:isEnroll metaData:result isDecline:isDecline isSecureClick:isSecureClick userName: userName callback:(RequestCompletionHandler)handler];
+            [self onChallengeReceived:u2fMetaData isEnroll:isEnroll metaData:result isDecline:isDecline isSecureClick:isSecureClick userName: userName callback:(RequestCompletionHandler)handler];
         }
     }];
 }
 
--(void)onChallengeReceived:(NSString*)baseUrl isEnroll:(BOOL)isEnroll metaData:(NSDictionary*)result isDecline:(BOOL)isDecline isSecureClick:(BOOL)isSecureClick userName:(NSString*)userName callback:(RequestCompletionHandler)handler{
+-(void)onChallengeReceived:(U2fMetaData*)u2fMetaData isEnroll:(BOOL)isEnroll metaData:(NSDictionary*)result isDecline:(BOOL)isDecline isSecureClick:(BOOL)isSecureClick userName:(NSString*)userName callback:(RequestCompletionHandler)handler{
     TokenManager* tokenManager = [[TokenManager alloc] init];
     tokenManager.u2FKey = [[U2FKeyImpl alloc] init];
     if (isEnroll){
+        NSString* baseUrl = [u2fMetaData registrationEndpoint];
         [tokenManager enroll:result baseUrl:baseUrl isDecline:isDecline isSecureClick: isSecureClick callBack:^(TokenResponse *tokenResponse, NSError *error){
             [self handleTokenResponse:tokenResponse baseUrl:baseUrl isDecline:isDecline callback:handler];
         }];
     } else {
-        [tokenManager sign:result baseUrl:baseUrl isDecline:isDecline isSecureClick:isSecureClick userName: userName callBack:^(TokenResponse* tokenResponse, NSError *error){
+        NSString* baseUrl = [u2fMetaData authenticationEndpoint];
+        [tokenManager sign:result u2fMetaData:u2fMetaData isDecline:isDecline isSecureClick:isSecureClick userName: userName callBack:^(TokenResponse* tokenResponse, NSError *error){
             [self handleTokenResponse:tokenResponse baseUrl:baseUrl isDecline:isDecline callback:handler];
         }];
     }

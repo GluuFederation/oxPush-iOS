@@ -106,9 +106,6 @@ int keyHandleLength = 64;
     
 	TokenEntity* tokenEntity = [[DataStoreManager sharedInstance] getTokenEntityForApplication:application userName:userName];
 
-    NSData* applicationSha256 = [[application SHA256] dataUsingEncoding:NSUTF8StringEncoding];
-    NSData* challengeSha256 = [[challenge SHA256] dataUsingEncoding:NSUTF8StringEncoding];
-    
     NSMutableData* signedData = [[NSMutableData alloc] init];
     //if we're using SecureClick, then responce we'll get from DP SC device
     if (isSecureClick) {
@@ -121,11 +118,12 @@ int keyHandleLength = 64;
 		int32_t count = [[DataStoreManager sharedInstance] incrementCountForToken:tokenEntity];
         UserPresenceVerifier* userPres = [[UserPresenceVerifier alloc] init];
         NSData* userPresence = [userPres verifyUserPresence];
+        NSData* applicationSha256 = [application SHA256Data];
+        NSData* challengeSha256 = [challenge SHA256Data];
+
         signedData = [[NSMutableData alloc] initWithData:[codec encodeAuthenticateSignedBytes:applicationSha256 userPresence:userPresence counter:count challengeSha256:challengeSha256]];
-        
-        GMEllipticCurveCrypto* crypto2 = [GMEllipticCurveCrypto generateKeyPairForCurve:
-                                          GMEllipticCurveSecp256r1];
-        
+        GMEllipticCurveCrypto* crypto2 = [GMEllipticCurveCrypto cryptoForKeyBase64:tokenEntity.privateKey];
+
         NSData *signature = [crypto2 hashSHA256AndSignDataEncoded:signedData];
         
         AuthenticateResponse* response = [[AuthenticateResponse alloc] initWithUserPresence:userPresence counter:count signature:signature];

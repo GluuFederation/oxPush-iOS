@@ -81,10 +81,19 @@ Byte CHECK_ONLY = 0x07;
     
 }
 
--(void)sign:(NSDictionary*)parameters baseUrl:(NSString*)baseUrl isDecline:(BOOL)isDecline isSecureClick:(BOOL)isSecureClick userName:(NSString*)userName callBack:(TokenResponseCompletionHandler)handler{
+-(void)sign:(NSDictionary*)parameters u2fMetaData:(U2fMetaData*)u2fMetaData isDecline:(BOOL)isDecline isSecureClick:(BOOL)isSecureClick userName:(NSString*)userName callBack:(TokenResponseCompletionHandler)handler{
     NSArray* autenticateRequests = [parameters objectForKey:JSON_PROPERTY_AUTENTICATION_REQUEST];
     NSDictionary* authRequest = [[NSDictionary alloc] init];
+    NSString* baseUrl = u2fMetaData.registrationEndpoint;
     responseHandler = handler;
+
+    NSMutableDictionary* clientMutableData = [[NSMutableDictionary alloc] init];
+    if (isDecline){
+        [clientMutableData setObject:AUTHENTICATE_CANCEL_TYPE forKey:JSON_PROPERTY_REQUEST_TYPE];
+    } else {
+        [clientMutableData setObject:REQUEST_TYPE_AUTHENTICATE forKey:JSON_PROPERTY_REQUEST_TYPE];
+    }
+
     for (NSDictionary* autenticateRequest in autenticateRequests){
         authRequest = autenticateRequest;
         
@@ -95,15 +104,33 @@ Byte CHECK_ONLY = 0x07;
         keyHandleString = [keyHandleString stringByReplacingOccurrencesOfString:@"_" withString:@"/"];
         keyHandleString = [keyHandleString stringByReplacingOccurrencesOfString:@"-" withString:@"+"];
         keyHandleString = [keyHandleString stringByAppendingString:@"="];
-        NSData* keyHandle = [keyHandleString base64DecodedData];//dataUsingEncoding:NSUTF8StringEncoding];
+        NSData* keyHandle = [keyHandleString base64DecodedData];
         if (![version isEqualToString:SUPPORTED_U2F_VERSION]){
             [[NSNotificationCenter defaultCenter] postNotificationName:NOTIFICATION_UNSUPPORTED_VERSION object:nil];
         }
+
+        [clientMutableData setObject:[authRequest valueForKey:JSON_PROPERTY_SERVER_CHALLENGE] forKey:JSON_PROPERTY_SERVER_CHALLENGE];
+
+        double fidoVersion = [u2fMetaData version].doubleValue;
+        // 2.0 == old implementation
+        if (fidoVersion == 2) {
+            [clientMutableData setObject:[u2fMetaData issuer] forKey:JSON_PROPERTY_SERVER_ORIGIN];
+        } else {
+            [clientMutableData setObject:[authRequest valueForKey:JSON_PROPERTY_APP_ID] forKey:JSON_PROPERTY_SERVER_ORIGIN];
+
+            NSData *clientData = [NSJSONSerialization dataWithJSONObject:clientMutableData options:NSJSONWritingPrettyPrinted error:nil];
+            challenge = [[NSString alloc] initWithData:clientData encoding:NSUTF8StringEncoding];
+        }
+
+        NSData *clientData = [NSJSONSerialization dataWithJSONObject:clientMutableData options:NSJSONWritingPrettyPrinted error:nil];
         NSData* controlData = [[NSData alloc] initWithBytes:&USER_PRESENCE_SIGN length:1];
         __block BOOL isSucess = NO;
-        [_u2FKey handleAuthenticationRequest:[[AuthenticateRequest alloc] initWithVersion:version control:controlData challenge:challenge application:appParam keyHandle:keyHandle] isSecureClick:isSecureClick userName: userName callback: ^(AuthenticateResponse *response, NSError *error){
+
+        AuthenticateRequest* authenticateRequest = [[AuthenticateRequest alloc] initWithVersion:version control:controlData challenge:challenge application:appParam keyHandle:keyHandle];
+
+        [_u2FKey handleAuthenticationRequest:authenticateRequest isSecureClick:isSecureClick userName: userName callback: ^(AuthenticateResponse *response, NSError *error){
             if (!error){
-                TokenResponse* tokenResponse = [self makeAuthenticationResponse:response authenticatedChallenge:challenge isDecline:isDecline isSecureClick: isSecureClick authRequest:authRequest baseUrl:baseUrl];
+                TokenResponse* tokenResponse = [self makeAuthenticationResponse:response authenticatedChallenge:challenge isDecline:isDecline isSecureClick:isSecureClick authRequest:authRequest baseUrl:baseUrl clientData:clientData];
                 handler(tokenResponse, nil);
                 isSucess = YES;
             } else {
@@ -147,43 +174,33 @@ Byte CHECK_ONLY = 0x07;
     TokenResponse* tokenResponse = [[TokenResponse alloc] init];
     [tokenResponse setResponse:responseJSONString];
     [tokenResponse setChallenge:challenge];
-    [tokenResponse setKeyHandle:[[enrollmentResponse keyHandle] base64EncodedString]];//base64EncodedStringWithOptions:0]];
+    [tokenResponse setKeyHandle:[[enrollmentResponse keyHandle] base64EncodedString]];
     
     return tokenResponse;
 }
 
--(TokenResponse*)makeAuthenticationResponse:(AuthenticateResponse*) authenticateResponse authenticatedChallenge:(NSString*)authenticatedChallenge isDecline:(BOOL)isDecline isSecureClick:(BOOL)isSecureClick authRequest:(NSDictionary*) authRequest baseUrl:(NSString*)baseUrl{
+-(TokenResponse*)makeAuthenticationResponse:(AuthenticateResponse*) authenticateResponse authenticatedChallenge:(NSString*)authenticatedChallenge isDecline:(BOOL)isDecline isSecureClick:(BOOL)isSecureClick authRequest:(NSDictionary*) authRequest baseUrl:(NSString*)baseUrl clientData:(NSData*)clientData {
     if (authenticateResponse == nil){
         return nil;
     }
-    
-    NSMutableDictionary* clientMutableData = [[NSMutableDictionary alloc] init];
-    if (isDecline){
-        [clientMutableData setObject:AUTHENTICATE_CANCEL_TYPE forKey:JSON_PROPERTY_REQUEST_TYPE];
-    } else {
-        [clientMutableData setObject:REQUEST_TYPE_AUTHENTICATE forKey:JSON_PROPERTY_REQUEST_TYPE];
-    }
-    [clientMutableData setObject:[authRequest valueForKey:JSON_PROPERTY_SERVER_CHALLENGE] forKey:JSON_PROPERTY_SERVER_CHALLENGE];
-    [clientMutableData setObject:baseUrl forKey:JSON_PROPERTY_SERVER_ORIGIN];
-    
+
     NSString* keyHandle = [authRequest valueForKey:JSON_PROPERTY_KEY_HANDLE];
-    NSData *clientData = [NSJSONSerialization dataWithJSONObject:clientMutableData options:NSJSONWritingPrettyPrinted error:nil];
-    NSString* clientDataString = [clientData base64EncodedStringWithOptions:0];
-    
-	// eric, this is where the encoding happens
-    NSData* resp = [codec encodeAuthenticateResponse:authenticateResponse];
-    
-    NSMutableDictionary* response = [[NSMutableDictionary alloc] init];
-    [response setObject:[resp base64EncodedString] forKey:@"signatureData"];
-    [response setObject:clientDataString forKey:@"clientData"];
-    [response setObject:keyHandle forKey:@"keyHandle"];
-    
+
+    // eric, this is where the encoding happens
+    NSData* resp = [self->codec encodeAuthenticateResponse:authenticateResponse];
+    NSString* clientDataString = [clientData base64EncodedString];
+
+    NSMutableDictionary* responseData = [[NSMutableDictionary alloc] init];
+    [responseData setObject:[resp base64EncodedString] forKey:@"signatureData"];
+    [responseData setObject:clientDataString forKey:@"clientData"];
+    [responseData setObject:keyHandle forKey:@"keyHandle"];
+
     NSError * err;
-    NSData * jsonData = [NSJSONSerialization dataWithJSONObject:response options:0 error:&err];
+    NSData * jsonData = [NSJSONSerialization dataWithJSONObject:responseData options:0 error:&err];
     NSString * responseJSONString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
-    
+
     responseJSONString = [responseJSONString URLEncode];
-    
+
     TokenResponse* tokenResponse = [[TokenResponse alloc] init];
     [tokenResponse setResponse:responseJSONString];
     [tokenResponse setChallenge:authenticatedChallenge];

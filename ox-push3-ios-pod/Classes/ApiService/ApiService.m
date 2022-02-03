@@ -37,10 +37,11 @@
 
 -(AFHTTPSessionManager*)getAFHTTPRequestManager{
     AFHTTPSessionManager *manager = [AFHTTPSessionManager manager];
+
     manager.requestSerializer = [AFJSONRequestSerializer serializer];
     manager.responseSerializer = [AFJSONResponseSerializer
                                   serializerWithReadingOptions:NSJSONReadingAllowFragments];
-    manager.responseSerializer.acceptableContentTypes = [NSSet setWithObject:@"application/json"];//x-www-form-urlencoded"];
+    manager.responseSerializer.acceptableContentTypes = [NSSet setWithObject:@"application/json"];
     
     /**** SSL Pinning ****/
     BOOL isTrustAll = [[NSUserDefaults standardUserDefaults] boolForKey:@"is_ssl_enabled"];
@@ -64,7 +65,7 @@
 -(void)callGETAPIService:(NSString*)url andParameters:(NSDictionary*)parameters andCallback:(RequestCompletionHandler)handler{
     AFHTTPSessionManager *manager = [self getAFHTTPRequestManager];
     
-    [manager GET:url parameters:parameters headers: nil progress: nil success:^(NSURLSessionDataTask *operation, id responseObject) {
+    [manager GET:url parameters:parameters success:^(NSURLSessionDataTask *operation, id responseObject) {
         NSLog(@"JSON: %@", responseObject);
         handler(responseObject ,nil);
     } failure:^(NSURLSessionDataTask *operation, NSError *error) {
@@ -75,16 +76,14 @@
 }
 
 -(void)callPOSTAPIService:(NSString*)url andParameters:(NSDictionary*)parameters andCallback:(RequestCompletionHandler)handler{
-    
-//    AFHTTPRequestOperationManager *manager = [self getAFHTTPRequestManager];
-
     AFHTTPSessionManager *manager = [AFHTTPSessionManager manager];
+
     manager.requestSerializer = [AFJSONRequestSerializer serializer];
     manager.responseSerializer = [AFJSONResponseSerializer
                                   serializerWithReadingOptions:NSJSONReadingAllowFragments];
-    manager.responseSerializer.acceptableContentTypes = [NSSet setWithObject:@"application/x-www-form-urlencoded"];//x-www-form-urlencoded"];//application/json
+    manager.responseSerializer.acceptableContentTypes = [NSSet setWithObject:@"application/x-www-form-urlencoded"];
     
-    [manager POST:url parameters:parameters headers: nil progress: nil success:^(NSURLSessionDataTask *operation, id responseObject) {
+    [manager POST:url parameters:parameters success:^(NSURLSessionDataTask *operation, id responseObject) {
         NSLog(@"JSON: %@", responseObject);
         handler(responseObject ,nil);
     } failure:^(NSURLSessionDataTask *operation, NSError *error) {
