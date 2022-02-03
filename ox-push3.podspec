@@ -21,7 +21,7 @@ Pod::Spec.new do |s|
 TODO: Add long description of the pod here.
                        DESC
 
-  s.homepage         = 'https://github.com/GluuFederation/ox-push3.git'
+  s.homepage         = 'https://github.com/GluuFederation/oxPush-iOS.git'
   # s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'Nazar Yavornytskyy' => 'nazaryavornytskyy@gmail.com' }
